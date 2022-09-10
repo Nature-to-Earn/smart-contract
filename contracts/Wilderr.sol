@@ -76,7 +76,7 @@ contract Wilderr is ERC721URIStorage {
         DAO_Proposal storage proposal = DAO_Proposals[nextProposal];
         proposal.candidate = _candidate;
         proposal.id = nextProposal;
-        proposal.deadline = block.number + 100;
+        proposal.deadline = block.timestamp + 1 days;
 
         //TODO emit event
 
@@ -89,7 +89,7 @@ contract Wilderr is ERC721URIStorage {
     {
         DAO_Proposal storage proposal = DAO_Proposals[_proposalId];
         // voting can only happen before deadline
-        require(block.number <= proposal.deadline);
+        require(block.timestamp <= proposal.deadline);
         // the candidate of this proposalId must have "applied" status only
         require(
             DAO_membership_status_mapping[proposal.candidate] ==
@@ -110,7 +110,7 @@ contract Wilderr is ERC721URIStorage {
 
     function make_DAO_member(uint256 _id) external onlyDAO_member {
         DAO_Proposal storage proposal = DAO_Proposals[_id];
-        require(block.number > proposal.deadline);
+        require(block.timestamp > proposal.deadline);
         // the candidate of this proposalId must have "applied" status only
         require(
             DAO_membership_status_mapping[proposal.candidate] ==
@@ -230,7 +230,7 @@ contract Wilderr is ERC721URIStorage {
     }
 
     function voteForEvent(uint256 id, bool _vote) external onlyDAO_member {
-        Event_proposal storage proposal = event_proposals[next_event_proposal];
+        Event_proposal storage proposal = event_proposals[id];
         require(
             block.timestamp <= proposal.deadline &&
                 proposal.status == proposal_status.proposed &&
@@ -249,7 +249,7 @@ contract Wilderr is ERC721URIStorage {
 
     // @author after DAO member has voted , if votesUp is more than votedDown of a proposal then that proposal is marked as "approved"
     function countVotes(uint256 id) external {
-        Event_proposal storage proposal = event_proposals[next_event_proposal];
+        Event_proposal storage proposal = event_proposals[id];
         require(
             block.timestamp > proposal.deadline &&
                 proposal.status == proposal_status.proposed
