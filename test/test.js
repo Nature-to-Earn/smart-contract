@@ -11,10 +11,10 @@ const { ethers } = require("hardhat");
 // import { ethers } from "hardhat";
 
 describe("Wilderr testing", function () {
-  let deployer, addr1, addr2, addr3, addr4, addr5, addr6, addr7;
+  let deployer, addr1, addr2, addr3, addr4, addr5, addr6, addr7, user;
 
   before(async function () {
-    [deployer, addr1, addr2, addr3, addr4, addr5, addr6, addr7] =
+    [deployer, addr1, addr2, addr3, addr4, addr5, addr6, addr7, user] =
       await ethers.getSigners();
 
     const WilderrFactory = await ethers.getContractFactory("Wilderr");
@@ -90,5 +90,14 @@ describe("Wilderr testing", function () {
     let obj = await this.contract.event_proposals(1);
 
     expect(obj.status).to.be.equal(2); //event is approved if status is 2
+  });
+  it("check 'registerForEvent'", async function () {
+    await this.contract.connect(user).registerForEvent(1, "my_metadata_uri");
+    await network.provider.send("evm_increaseTime", [21 * 24 * 60 * 60]);
+    await this.contract.connect(user).submitProof(1, "my_proof_uri");
+    await this.contract.connect(deployer).verifyParticipants(1, [user.address]);
+
+    let res = await this.contract.getParticipantInfo(1, user.address);
+    expect(res.eligible).to.be.equal(true);
   });
 });

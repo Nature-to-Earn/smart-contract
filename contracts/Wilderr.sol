@@ -341,4 +341,13 @@ contract Wilderr is ERC721URIStorage {
         _setTokenURI(nftId, participant.proof);
         nftId++;
     }
+
+    /* ************** Getter functions ***************** */
+    function getParticipantInfo(uint256 eventId, address user)
+        external
+        view
+        returns (metadataOf_participant memory)
+    {
+        return participant_info[eventId][user];
+    }
 }
