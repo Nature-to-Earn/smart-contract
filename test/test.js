@@ -29,7 +29,6 @@ describe("Wilderr testing", function () {
     ]);
   });
 
-  /* *************** TESTING DAO SECTION ****************** */
 
   it("check DAO member status", async function () {
     let arr = [addr1, addr2, addr3, addr4, addr5, addr6, addr7];
