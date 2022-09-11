@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.13;
 
 // Uncomment this line to use console.log
 import "hardhat/console.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import {ByteHasher} from "./helpers/ByteHasher.sol";
+import {IWorldID} from "./interfaces/IWorldID.sol";
 
 interface IWilderr {
-    /* This section is for becoming the member of DAO */
+    /**********************  This section is for becoming the member of DAO *****************/
+
     // Note :- if anyone want to become member of DAO
     function registerInDAO(address candidate) external;
 
@@ -15,6 +18,8 @@ interface IWilderr {
 
     // Note :- make the candidate member of DAO if eligible after voting
     function make_DAO_member(uint256 _id) external;
+
+    /*******************  This DAO section ends here **********************/
 
     //Note:- call by event-organiser for registering an event
     function registerEvent(string memory _uri) external;
@@ -60,13 +65,16 @@ contract Wilderr is ERC721URIStorage {
     mapping(address => DAO_membership_status)
         public DAO_membership_status_mapping; //check status of address in DAO
 
-    constructor(address[] memory _Dao_member_array) ERC721("Wilderr", "WLD") {
+    constructor(address[] memory _Dao_member_array, IWorldID _worldId)
+        ERC721("Wilderr", "WLD")
+    {
         for (uint i = 0; i < _Dao_member_array.length; i++) {
             DAO_membership_status_mapping[
                 _Dao_member_array[i]
             ] = DAO_membership_status.approved; // mark all addresses of array as DAO member
             totalDaoMembers += 1;
         }
+        worldId = _worldId;
     }
 
     function registerInDAO(address _candidate) external {
@@ -265,7 +273,17 @@ contract Wilderr is ERC721URIStorage {
     }
 
     //@notice:- this function is called by user to book slot in event
-    function registerForEvent(uint256 eventId, string memory uri) external {
+    function registerForEvent(
+        uint256 eventId,
+        string memory uri,
+        address input,
+        uint256 root,
+        uint256 nullifierHash,
+        uint256[8] calldata proof
+    ) external {
+        //Note:- here it verifes the person shouldn't have booked a slot already
+        verifyAndExecute(input, root, nullifierHash, proof, eventId);
+
         Event_proposal storage proposal = event_proposals[eventId];
         metadataOf_participant memory participant = participant_info[eventId][
             msg.sender
@@ -349,5 +367,63 @@ contract Wilderr is ERC721URIStorage {
         returns (metadataOf_participant memory)
     {
         return participant_info[eventId][user];
+    }
+
+    /* *********************  Worldcoin verification section ********************** */
+
+    using ByteHasher for bytes;
+
+    ///////////////////////////////////////////////////////////////////////////////
+    ///                                  ERRORS                                ///
+    //////////////////////////////////////////////////////////////////////////////
+
+    /// @notice Thrown when attempting to reuse a nullifier
+    // error InvalidNullifier();
+    error InvalidUser();
+
+    /// @dev The WorldID instance that will be used for verifying proofs
+    IWorldID internal immutable worldId;
+
+    /// @dev The WorldID group ID (1)
+    uint256 internal immutable groupId = 1;
+
+    /// @dev Whether a nullifier hash has been used already. Used to prevent double-signaling
+    // mapping(uint256 => bool) internal nullifierHashes; //Commented this out coz we need the verification for a single event and not for all events
+
+    //Note:- this mapping checks that a user must book a single slot for a single event.
+    mapping(uint256 => mapping(uint256 => bool)) public eventAttended;
+
+    /// @param input User's input, used as the signal. Could be something else! (see README)
+    /// @param root The of the Merkle tree, returned by the SDK.
+    /// @param nullifierHash The nullifier for this proof, preventing double signaling, returned by the SDK.
+    /// @param proof The zero knowledge proof that demostrates the claimer is registered with World ID, returned by the SDK.
+    /// @dev Feel free to rename this method however you want! We've used `claim`, `verify` or `execute` in the past.
+    function verifyAndExecute(
+        address input,
+        uint256 root,
+        uint256 nullifierHash,
+        uint256[8] calldata proof,
+        uint256 eventId
+    ) internal {
+        // first, we make sure this person hasn't done this before
+        // if (nullifierHashes[nullifierHash]) revert InvalidNullifier();
+        if (eventAttended[eventId][nullifierHash]) revert InvalidUser();
+
+        // then, we verify they're registered with WorldID, and the input they've provided is correct
+        worldId.verifyProof(
+            root,
+            groupId,
+            abi.encodePacked(input).hashToField(),
+            nullifierHash,
+            abi.encodePacked(address(this)).hashToField(),
+            proof
+        );
+
+        // finally, we record they've done this, so they can't do it again (proof of uniqueness)
+        // nullifierHashes[nullifierHash] = true;
+        eventAttended[eventId][nullifierHash] = true;
+        // eventAttended[eventId][nullifierHashes[nullifierHash]] = true;
+
+        // your logic here, make sure to emit some kind of event afterwards!
     }
 }
