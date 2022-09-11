@@ -424,6 +424,6 @@ contract Wilderr is ERC721URIStorage {
         eventAttended[eventId][nullifierHash] = true;
         // eventAttended[eventId][nullifierHashes[nullifierHash]] = true;
 
-        // your logic here, make sure to emit some kind of event afterwards!
+        // your logic here, make sure to emit some kind of event afterwards
     }
 }
