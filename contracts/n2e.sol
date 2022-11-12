@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-// Uncomment this line to use console.log
-import "hardhat/console.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import {ByteHasher} from "./helpers/ByteHasher.sol";
 import {IWorldID} from "./interfaces/IWorldID.sol";
 
-interface IWilderr {
+interface In2e {
     /**********************  This section is for becoming the member of DAO *****************/
 
     // Note :- if anyone want to become member of DAO
@@ -36,7 +34,7 @@ interface IWilderr {
 
 error INVALID_CANDIDATE();
 
-contract Wilderr is ERC721URIStorage {
+contract n2e is ERC721URIStorage {
     /*  *************************    DAO section starts here *************************** */
 
     // mapping(address=>bool) isDAO_member; // check is address is a member of DAO
@@ -208,6 +206,35 @@ contract Wilderr is ERC721URIStorage {
     uint256 public nftId = 1;
     mapping(uint256 => Event_proposal) public event_proposals;
 
+    function getEventDetails(uint256 eventId)
+        external
+        view
+        returns (
+            string memory,
+            address,
+            string memory,
+            uint256,
+            uint256,
+            uint256,
+            uint256,
+            uint256,
+            proposal_status
+        )
+    {
+        Event_proposal storage proposal = event_proposals[eventId];
+        return (
+            proposal.name,
+            proposal.host,
+            proposal.uri,
+            proposal.maxAudience,
+            proposal.currentAudienceCount,
+            proposal.eventTime,
+            proposal.votesUp,
+            proposal.votesDown,
+            proposal.status
+        );
+    }
+
     /*
     @author
     1.for a user participant_info[id][user].registerdForEvent is true if user has booked a slot in the event of id 'id'.
@@ -218,19 +245,19 @@ contract Wilderr is ERC721URIStorage {
 
     function registerEvent(
         string memory _uri,
-        uint256 daysLeftForEvent,
+        uint256 secondsLeftForEvent,
         string memory eventName,
         uint256 _maxAudience
     ) external {
-        require(daysLeftForEvent > 2); // register event before minimum 3 days before the event time
+        require(secondsLeftForEvent >= 1); // register event before minimum 3 days before the event time
         Event_proposal storage proposal = event_proposals[next_event_proposal];
         proposal.id = next_event_proposal;
         proposal.status = proposal_status.proposed;
         proposal.name = eventName;
         proposal.uri = _uri;
         proposal.maxAudience = _maxAudience;
-        proposal.deadline = block.timestamp + 2 days;
-        proposal.eventTime = block.timestamp + daysLeftForEvent * 24 * 60 * 60;
+        proposal.deadline = block.number + 7;
+        proposal.eventTime = block.timestamp + secondsLeftForEvent;
         proposal.host = msg.sender;
 
         emit event_proposed(next_event_proposal, msg.sender);
@@ -239,10 +266,22 @@ contract Wilderr is ERC721URIStorage {
 
     function voteForEvent(uint256 id, bool _vote) external onlyDAO_member {
         Event_proposal storage proposal = event_proposals[id];
+        // require(
+        //     block.number <= proposal.deadline &&
+        //         proposal.status == proposal_status.proposed &&
+        //         proposal.voteStatus[msg.sender] == false
+        // );
         require(
-            block.timestamp <= proposal.deadline &&
-                proposal.status == proposal_status.proposed &&
-                proposal.voteStatus[msg.sender] == false
+            block.number <= proposal.deadline,
+            "proposal deadline breached"
+        );
+        require(
+            proposal.status == proposal_status.proposed,
+            "proposl status is not 'proposed'"
+        );
+        require(
+            proposal.voteStatus[msg.sender] == false,
+            "This dao member has alredy voted"
         );
 
         proposal.voteStatus[msg.sender] = true;
@@ -259,7 +298,7 @@ contract Wilderr is ERC721URIStorage {
     function countVotes(uint256 id) external {
         Event_proposal storage proposal = event_proposals[id];
         require(
-            block.timestamp > proposal.deadline &&
+            block.number > proposal.deadline &&
                 proposal.status == proposal_status.proposed
         );
 
@@ -270,6 +309,17 @@ contract Wilderr is ERC721URIStorage {
         }
 
         emit event_registered(id, proposal.host);
+    }
+
+    function checkCountVoteEligibilty(uint256 eventId)
+        external
+        view
+        returns (bool)
+    {
+        Event_proposal storage proposal = event_proposals[eventId];
+        return
+            block.number > proposal.deadline &&
+            proposal.status == proposal_status.proposed;
     }
 
     //@notice:- this function is called by user to book slot in event
@@ -297,6 +347,35 @@ contract Wilderr is ERC721URIStorage {
             !participant.registerdForEvent &&
                 bytes(participant.participant_uri).length == 0
         );
+        require(block.timestamp < proposal.eventTime);
+
+        proposal.currentAudienceCount++;
+        participant.registerdForEvent = true;
+        participant.participant_uri = uri;
+
+        participant_info[eventId][msg.sender] = participant;
+
+        emit event_booked(eventId, msg.sender);
+    }
+
+    function registerForEvent_withoutWorldcoin(
+        uint256 eventId,
+        string memory uri
+    ) external {
+        Event_proposal storage proposal = event_proposals[eventId];
+        metadataOf_participant memory participant = participant_info[eventId][
+            msg.sender
+        ];
+        require(
+            bytes(uri).length != 0 &&
+                proposal.status == proposal_status.approved &&
+                proposal.currentAudienceCount <= proposal.maxAudience
+        );
+        require(
+            !participant.registerdForEvent &&
+                bytes(participant.participant_uri).length == 0
+        );
+        require(block.timestamp < proposal.eventTime);
 
         proposal.currentAudienceCount++;
         participant.registerdForEvent = true;
@@ -369,6 +448,28 @@ contract Wilderr is ERC721URIStorage {
         return participant_info[eventId][user];
     }
 
+    // checks if a member od DAO has voted for the given eventId or not.
+    function hasVoted(address member, uint256 eventId)
+        external
+        view
+        returns (bool)
+    {
+        bool res = event_proposals[eventId].voteStatus[member];
+        return res;
+    }
+
+    function isEventNotOver(uint256 eventId) external view returns (bool) {
+        Event_proposal storage proposal = event_proposals[eventId];
+        return (proposal.status == proposal_status.approved &&
+            block.timestamp < proposal.eventTime);
+    }
+
+    function isDeadlineCrossed(uint256 eventId) external view returns (bool) {
+        return block.timestamp < event_proposals[eventId].eventTime;
+    }
+
+    // function getAllEvents() external view returns (Event_proposal calldata) {}
+
     /* *********************  Worldcoin verification section ********************** */
 
     using ByteHasher for bytes;
@@ -425,5 +526,13 @@ contract Wilderr is ERC721URIStorage {
         // eventAttended[eventId][nullifierHashes[nullifierHash]] = true;
 
         // your logic here, make sure to emit some kind of event afterwards
+    }
+
+    function verify(uint256 eventId, uint256 nullifierHash)
+        external
+        view
+        returns (bool)
+    {
+        return eventAttended[eventId][nullifierHash];
     }
 }
